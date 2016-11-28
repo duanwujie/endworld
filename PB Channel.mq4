@@ -1,206 +1,331 @@
+//+------------------------------------------------------------------+
+//|                       TriangularMA centered asymmetric bands.mq4 |
+//|                                                           mladen |
+//| arrowse coded acording to idea presented by umesh                |
+//+------------------------------------------------------------------+
 #property copyright "mladen"
 #property link      "mladenfx@gmail.com"
 
 #property indicator_chart_window
 #property indicator_buffers 5
-#property indicator_color1 Black
-#property indicator_color2 Red
-#property indicator_color3 LimeGreen
-#property indicator_color4 Purple
-#property indicator_color5 Purple
+#property indicator_color1  DimGray
+#property indicator_color2  Red
+#property indicator_color3  LimeGreen
+#property indicator_color4  Red
+#property indicator_color5  Blue
+#property indicator_style1  STYLE_DOT
 
-extern string TimeFrame = "current time frame";
-extern int HalfLength = 50;
-extern int Price = 6;
-extern double BandsDeviations = 3.0;
-extern bool Interpolate = TRUE;
-extern bool alertsOn = TRUE;
-extern bool alertsOnCurrent = FALSE;
-extern bool alertsOnHighLow = FALSE;
-extern bool alertsMessage = TRUE;
-extern bool alertsSound = FALSE;
-extern bool alertsEmail = FALSE;
-double G_ibuf_128[];
-double G_ibuf_132[];
-double G_ibuf_136[];
-double G_ibuf_140[];
-double G_ibuf_144[];
-double G_ibuf_148[];
-double G_ibuf_152[];
-string Gs_156;
-bool Gi_164 = FALSE;
-bool Gi_168 = FALSE;
-int G_timeframe_172;
-string Gs_176 = "";
-datetime G_time_184;
+//
+//
+//
+//
+//
 
-int init() {
-   G_timeframe_172 = f0_0(TimeFrame);
-   HalfLength = MathMax(HalfLength, 1);
+extern string TimeFrame       = "current time frame";
+extern int    HalfLength      = 50;
+extern int    Price           = PRICE_WEIGHTED;
+extern double BandsDeviations = 3;
+extern bool   Interpolate     = true;
+extern bool   alertsOn        = false;
+extern bool   alertsOnCurrent = false;
+extern bool   alertsOnHighLow = true;
+extern bool   alertsMessage   = true;
+extern bool   alertsSound     = false;
+extern bool   alertsEmail     = false;
+
+//
+//
+//
+//
+//
+
+double tmBuffer[];
+double upBuffer[];
+double dnBuffer[];
+double wuBuffer[];
+double wdBuffer[];
+double upArrow[];
+double dnArrow[];
+
+//
+//
+//
+//
+//
+
+string IndicatorFileName;
+bool   calculatingTma = false;
+bool   returningBars  = false;
+int    timeFrame;
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+//
+//
+//
+//
+
+int init()
+{
+   timeFrame  = stringToTimeFrame(TimeFrame);
+   HalfLength = MathMax(HalfLength,1);
    IndicatorBuffers(7);
-   SetIndexBuffer(0, G_ibuf_128);
-   SetIndexDrawBegin(0, HalfLength);
-   SetIndexBuffer(1, G_ibuf_132);
-   SetIndexDrawBegin(1, HalfLength);
-   SetIndexBuffer(2, G_ibuf_136);
-   SetIndexDrawBegin(2, HalfLength);
-   SetIndexBuffer(3, G_ibuf_152);
-   SetIndexStyle(3, DRAW_ARROW);
-   SetIndexArrow(5, SYMBOL_ARROWDOWN);
-   SetIndexBuffer(4, G_ibuf_148);
-   SetIndexStyle(4, DRAW_ARROW);
-   SetIndexArrow(6, SYMBOL_ARROWUP);
-   SetIndexBuffer(5, G_ibuf_140);
-   SetIndexBuffer(6, G_ibuf_144);
-   if (TimeFrame == "calculateTma") {
-      Gi_164 = TRUE;
-      return (0);
+         SetIndexBuffer(0,tmBuffer);  SetIndexDrawBegin(0,HalfLength);
+         SetIndexBuffer(1,upBuffer);  SetIndexDrawBegin(1,HalfLength);
+         SetIndexBuffer(2,dnBuffer);  SetIndexDrawBegin(2,HalfLength);
+         SetIndexBuffer(3,dnArrow);   SetIndexStyle(3,DRAW_ARROW); SetIndexArrow(5,242);
+         SetIndexBuffer(4,upArrow);   SetIndexStyle(4,DRAW_ARROW); SetIndexArrow(6,241);
+         SetIndexBuffer(5,wuBuffer);
+         SetIndexBuffer(6,wdBuffer);
+
+         if (TimeFrame=="calculateTma")  { calculatingTma=true; return(0); }
+         if (TimeFrame=="returnBars")    { returningBars=true;  return(0); }
+
+   
+   IndicatorFileName = WindowExpertName();
+   return(0);
+}
+int deinit() { return(0); }
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+//
+//
+//
+//
+//
+
+int start()
+{
+   int counted_bars=IndicatorCounted();
+   int i,limit;
+
+   if(counted_bars<0) return(-1);
+   if(counted_bars>0) counted_bars--;
+           limit=MathMin(Bars-1,Bars-counted_bars+HalfLength);
+
+           if (returningBars)  { tmBuffer[0] = limit; return(0); }
+           if (calculatingTma) { calculateTma(limit); return(0); }
+           if (timeFrame > Period()) limit = MathMax(limit,MathMin(Bars-1,iCustom(NULL,timeFrame,IndicatorFileName,"returnBars",0,0)*timeFrame/Period()));
+
+   //
+   //
+   //
+   //
+   //
+   
+ 	for(i = limit; i >= 0; i--)
+   {
+      int      shift1 = iBarShift(NULL,timeFrame,Time[i]);
+      datetime time1  = iTime    (NULL,timeFrame,shift1);
+
+      //
+      //
+      //
+      //
+      //
+
+         tmBuffer[i] = iCustom(NULL,timeFrame,IndicatorFileName,"calculateTma",HalfLength,Price,BandsDeviations,0,shift1);
+         upBuffer[i] = iCustom(NULL,timeFrame,IndicatorFileName,"calculateTma",HalfLength,Price,BandsDeviations,1,shift1);
+         dnBuffer[i] = iCustom(NULL,timeFrame,IndicatorFileName,"calculateTma",HalfLength,Price,BandsDeviations,2,shift1);
+
+         upArrow[i] = EMPTY_VALUE;
+         dnArrow[i] = EMPTY_VALUE;            
+            if (High[i+1]>upBuffer[i+1] && Close[i+1]>Open[i+1] && Close[i]<Open[i]) upArrow[i] = High[i]+iATR(NULL,0,20,i);
+            if ( Low[i+1]<dnBuffer[i+1] && Close[i+1]<Open[i+1] && Close[i]>Open[i]) dnArrow[i] = High[i]-iATR(NULL,0,20,i);
+
+         if (timeFrame <= Period() || shift1==iBarShift(NULL,timeFrame,Time[i-1])) continue;
+         if (!Interpolate) continue;
+
+      //
+      //
+      //
+      //
+      //
+
+         for(int n = 1; i+n < Bars && Time[i+n] >= time1; n++) continue;
+         double factor = 1.0 / n;
+         for(int k = 1; k < n; k++)
+            {
+               tmBuffer[i+k] = k*factor*tmBuffer[i+n] + (1.0-k*factor)*tmBuffer[i];
+               upBuffer[i+k] = k*factor*upBuffer[i+n] + (1.0-k*factor)*upBuffer[i];
+               dnBuffer[i+k] = k*factor*dnBuffer[i+n] + (1.0-k*factor)*dnBuffer[i];
+            }               
    }
-   if (TimeFrame == "returnBars") {
-      Gi_168 = TRUE;
-      return (0);
-   }
-   Gs_156 = WindowExpertName();
-   return (0);
+
+   //
+   //
+   //
+   //
+   //
+   
+   if (alertsOn)
+   {
+      if (alertsOnCurrent)
+            int forBar = 0;
+      else      forBar = 1;
+      if (alertsOnHighLow)       
+      {
+         if (High[forBar] > upBuffer[forBar] && High[forBar+1] < upBuffer[forBar+1]) doAlert("high penetrated upper bar");
+         if (Low[forBar]  < dnBuffer[forBar] && Low[forBar+1]  > dnBuffer[forBar+1]) doAlert("low penetrated lower bar");
+      }
+      else
+      {
+         if (Close[forBar] > upBuffer[forBar] && Close[forBar+1] < upBuffer[forBar+1]) doAlert("close penetrated upper bar");
+         if (Close[forBar] < dnBuffer[forBar] && Close[forBar+1] > dnBuffer[forBar+1]) doAlert("close penetrated lower bar");
+      }
+   } 
+
+   return(0);
 }
 
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+//
+//
+//
+//
+//
 
-int deinit() {
-   return (0);
-}
+void calculateTma(int limit)
+{
+   int i,j,k;
+   double FullLength = 2.0*HalfLength+1.0;
+   
+   //
+   //
+   //
+   //
+   //
+   
+   for (i=limit; i>=0; i--)
+   {
+      double sum  = (HalfLength+1)*iMA(NULL,0,1,0,MODE_SMA,Price,i);
+      double sumw = (HalfLength+1);
+      for(j=1, k=HalfLength; j<=HalfLength; j++, k--)
+      {
+         sum  += k*iMA(NULL,0,1,0,MODE_SMA,Price,i+j);
+         sumw += k;
 
-
-int start() {
-   int shift_12;
-   int datetime_16;
-   double Ld_24;
-   int Li_36;
-   int Li_0 = IndicatorCounted();
-   if (Li_0 < 0) return (-1);
-   if (Li_0 > 0) Li_0--;
-   int Li_8 = MathMin(Bars - 1, Bars - Li_0 + HalfLength);
-   if (Gi_168) {
-      G_ibuf_128[0] = Li_8;
-      return (0);
-   }
-   if (Gi_164) {
-      f0_2(Li_8);
-      return (0);
-   }
-   if (G_timeframe_172 > Period()) Li_8 = MathMax(Li_8, MathMin(Bars - 1, iCustom(NULL, G_timeframe_172, Gs_156, "returnBars", 0, 0) * G_timeframe_172 / Period()));
-   for (int Li_4 = Li_8; Li_4 >= 0; Li_4--) {
-      shift_12 = iBarShift(NULL, G_timeframe_172, Time[Li_4]);
-      datetime_16 = iTime(NULL, G_timeframe_172, shift_12);
-      G_ibuf_128[Li_4] = iCustom(NULL, G_timeframe_172, Gs_156, "calculateTma", HalfLength, Price, BandsDeviations, 0, shift_12);
-      G_ibuf_132[Li_4] = iCustom(NULL, G_timeframe_172, Gs_156, "calculateTma", HalfLength, Price, BandsDeviations, 1, shift_12);
-      G_ibuf_136[Li_4] = iCustom(NULL, G_timeframe_172, Gs_156, "calculateTma", HalfLength, Price, BandsDeviations, 2, shift_12);
-      G_ibuf_148[Li_4] = EMPTY_VALUE;
-      G_ibuf_152[Li_4] = EMPTY_VALUE;
-      if (High[Li_4 + 1] > G_ibuf_132[Li_4 + 1] && Close[Li_4 + 1] > Open[Li_4 + 1] && Close[Li_4] < Open[Li_4]) G_ibuf_148[Li_4] = High[Li_4] + iATR(NULL, 0, 20, Li_4);
-      if (Low[Li_4 + 1] < G_ibuf_136[Li_4 + 1] && Close[Li_4 + 1] < Open[Li_4 + 1] && Close[Li_4] > Open[Li_4]) G_ibuf_152[Li_4] = High[Li_4] - iATR(NULL, 0, 20, Li_4);
-      if (G_timeframe_172 <= Period() || shift_12 == iBarShift(NULL, G_timeframe_172, Time[Li_4 - 1])) continue;
-      if (Interpolate) {
-         for (int Li_20 = 1; Li_4 + Li_20 < Bars && Time[Li_4 + Li_20] >= datetime_16; Li_20++) {
-         }
-         Ld_24 = 1.0 / Li_20;
-         for (int Li_32 = 1; Li_32 < Li_20; Li_32++) {
-            G_ibuf_128[Li_4 + Li_32] = Li_32 * Ld_24 * (G_ibuf_128[Li_4 + Li_20]) + (1.0 - Li_32 * Ld_24) * G_ibuf_128[Li_4];
-            G_ibuf_132[Li_4 + Li_32] = Li_32 * Ld_24 * (G_ibuf_132[Li_4 + Li_20]) + (1.0 - Li_32 * Ld_24) * G_ibuf_132[Li_4];
-            G_ibuf_136[Li_4 + Li_32] = Li_32 * Ld_24 * (G_ibuf_136[Li_4 + Li_20]) + (1.0 - Li_32 * Ld_24) * G_ibuf_136[Li_4];
+         if (j<=i)
+         {
+            sum  += k*iMA(NULL,0,1,0,MODE_SMA,Price,i-j);
+            sumw += k;
          }
       }
-   }
-   if (alertsOn) {
-      if (alertsOnCurrent) Li_36 = 0;
-      else Li_36 = 1;
-      if (alertsOnHighLow) {
-         if (High[Li_36] > G_ibuf_132[Li_36] && High[Li_36 + 1] < G_ibuf_132[Li_36 + 1]) f0_1("high penetrated upper bar");
-         if (Low[Li_36] < G_ibuf_136[Li_36] && Low[Li_36 + 1] > G_ibuf_136[Li_36 + 1]) f0_1("low penetrated lower bar");
-      } else {
-         if (Close[Li_36] > G_ibuf_132[Li_36] && Close[Li_36 + 1] < G_ibuf_132[Li_36 + 1]) f0_1("Exit buy");
-         if (Close[Li_36] < G_ibuf_136[Li_36] && Close[Li_36 + 1] > G_ibuf_136[Li_36 + 1]) f0_1("Exit sell");
-      }
-   }
-   return (0);
-}
+      tmBuffer[i] = sum/sumw;
 
-void f0_2(int Ai_0) {
-   int Li_8;
-   double Ld_24;
-   double Ld_32;
-   double Ld_40;
-   double Ld_16 = 2.0 * HalfLength + 1.0;
-   for (int Li_4 = Ai_0; Li_4 >= 0; Li_4--) {
-      Ld_24 = (HalfLength + 1) * iMA(NULL, 0, 1, 0, MODE_SMA, Price, Li_4);
-      Ld_32 = HalfLength + 1;
-      Li_8 = 1;
-      for (int Li_12 = HalfLength; Li_8 <= HalfLength; Li_12--) {
-         Ld_24 += Li_12 * iMA(NULL, 0, 1, 0, MODE_SMA, Price, Li_4 + Li_8);
-         Ld_32 += Li_12;
-         if (Li_8 <= Li_4) {
-            Ld_24 += Li_12 * iMA(NULL, 0, 1, 0, MODE_SMA, Price, Li_4 - Li_8);
-            Ld_32 += Li_12;
-         }
-         Li_8++;
-      }
-      G_ibuf_128[Li_4] = Ld_24 / Ld_32;
-      Ld_40 = iMA(NULL, 0, 1, 0, MODE_SMA, Price, Li_4) - G_ibuf_128[Li_4];
-      if (Li_4 <= Bars - HalfLength - 1) {
-         if (Li_4 == Bars - HalfLength - 1) {
-            G_ibuf_132[Li_4] = G_ibuf_128[Li_4];
-            G_ibuf_136[Li_4] = G_ibuf_128[Li_4];
-            if (Ld_40 >= 0.0) {
-               G_ibuf_140[Li_4] = MathPow(Ld_40, 2);
-               G_ibuf_144[Li_4] = 0;
-               continue;
-            }
-            G_ibuf_144[Li_4] = MathPow(Ld_40, 2);
-            G_ibuf_140[Li_4] = 0;
+      //
+      //
+      //
+      //
+      //
+            
+         double diff = iMA(NULL,0,1,0,MODE_SMA,Price,i)-tmBuffer[i];
+         if (i> (Bars-HalfLength-1)) continue;
+         if (i==(Bars-HalfLength-1))
+         {
+            upBuffer[i] = tmBuffer[i];
+            dnBuffer[i] = tmBuffer[i];
+            if (diff>=0)
+               {
+                  wuBuffer[i] = MathPow(diff,2);
+                  wdBuffer[i] = 0;
+               }
+            else
+               {               
+                  wdBuffer[i] = MathPow(diff,2);
+                  wuBuffer[i] = 0;
+               }                  
             continue;
          }
-         if (Ld_40 >= 0.0) {
-            G_ibuf_140[Li_4] = ((G_ibuf_140[Li_4 + 1]) * (Ld_16 - 1.0) + MathPow(Ld_40, 2)) / Ld_16;
-            G_ibuf_144[Li_4] = (G_ibuf_144[Li_4 + 1]) * (Ld_16 - 1.0) / Ld_16;
-         } else {
-            G_ibuf_144[Li_4] = ((G_ibuf_144[Li_4 + 1]) * (Ld_16 - 1.0) + MathPow(Ld_40, 2)) / Ld_16;
-            G_ibuf_140[Li_4] = (G_ibuf_140[Li_4 + 1]) * (Ld_16 - 1.0) / Ld_16;
-         }
-         G_ibuf_132[Li_4] = G_ibuf_128[Li_4] + BandsDeviations * MathSqrt(G_ibuf_140[Li_4]);
-         G_ibuf_136[Li_4] = G_ibuf_128[Li_4] - BandsDeviations * MathSqrt(G_ibuf_144[Li_4]);
-      }
+      
+         //
+         //
+         //
+         //
+         //
+         
+         if(diff>=0)
+            {
+               wuBuffer[i] = (wuBuffer[i+1]*(FullLength-1)+MathPow(diff,2))/FullLength;
+               wdBuffer[i] =  wdBuffer[i+1]*(FullLength-1)/FullLength;
+            }
+         else
+            {
+               wdBuffer[i] = (wdBuffer[i+1]*(FullLength-1)+MathPow(diff,2))/FullLength;
+               wuBuffer[i] =  wuBuffer[i+1]*(FullLength-1)/FullLength;
+            }
+         upBuffer[i] = tmBuffer[i] + BandsDeviations*MathSqrt(wuBuffer[i]);
+         dnBuffer[i] = tmBuffer[i] - BandsDeviations*MathSqrt(wdBuffer[i]);
    }
+}
+    
+
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+//
+//
+//
+//
+//
+
+void doAlert(string doWhat)
+{
+   static string   previousAlert="";
+   static datetime previousTime;
+   string message;
+
+   //
+   //
+   //
+   //
+   //
+   
+   if (previousAlert!=doWhat || previousTime!=Time[0]) 
+   {
+      previousAlert = doWhat;
+      previousTime  = Time[0];
+
+      message= StringConcatenate(Symbol()," at ",TimeToStr(TimeLocal(),TIME_SECONDS)," THA : ",doWhat);
+         if (alertsMessage) Alert(message);
+         if (alertsEmail)   SendMail(StringConcatenate(Symbol(),"TMA "),message);
+         if (alertsSound)   PlaySound("alert2.wav");
+    }
 }
 
-void f0_1(string As_0) {
-   string str_concat_8;
-   if (Gs_176 != As_0 || G_time_184 != Time[0]) {
-      Gs_176 = As_0;
-      G_time_184 = Time[0];
-      str_concat_8 = StringConcatenate(Symbol(), " at ", TimeToStr(TimeLocal(), TIME_SECONDS), " PB : ", As_0);
-      if (alertsMessage) Alert(str_concat_8);
-      if (alertsEmail) SendMail(StringConcatenate(Symbol(), "TMA "), str_concat_8);
-      if (alertsSound) PlaySound("alert2.wav");
-   }
-}
+//
+//
+//
+//
+//
 
-int f0_0(string As_0) {
-   int Li_12;
-   for (int Li_8 = StringLen(As_0) - 1; Li_8 >= 0; Li_8--) {
-      Li_12 = StringGetChar(As_0, Li_8);
-      if ((Li_12 > '`' && Li_12 < '{') || (Li_12 > '?' && Li_12 < 256)) As_0 = StringSetChar(As_0, 1, Li_12 - 32);
-      else
-         if (Li_12 > -33 && Li_12 < 0) As_0 = StringSetChar(As_0, 1, Li_12 + 224);
+int stringToTimeFrame(string tfs)
+{
+   for(int l = StringLen(tfs)-1; l >= 0; l--)
+   {
+      int chars = StringGetChar(tfs,l);
+          if((chars > 96 && chars < 123) || (chars > 223 && chars < 256))
+               tfs = StringSetChar(tfs, 1, chars - 32);
+          else 
+              if(chars > -33 && chars < 0)
+                  tfs = StringSetChar(tfs, 1, chars + 224);
    }
-   int timeframe_16 = 0;
-   if (As_0 == "M1" || As_0 == "1") timeframe_16 = 1;
-   if (As_0 == "M5" || As_0 == "5") timeframe_16 = 5;
-   if (As_0 == "M15" || As_0 == "15") timeframe_16 = 15;
-   if (As_0 == "M30" || As_0 == "30") timeframe_16 = 30;
-   if (As_0 == "H1" || As_0 == "60") timeframe_16 = 60;
-   if (As_0 == "H4" || As_0 == "240") timeframe_16 = 240;
-   if (As_0 == "D1" || As_0 == "1440") timeframe_16 = 1440;
-   if (As_0 == "W1" || As_0 == "10080") timeframe_16 = 10080;
-   if (As_0 == "MN" || As_0 == "43200") timeframe_16 = 43200;
-   if (timeframe_16 == 0 || timeframe_16 < Period()) timeframe_16 = Period();
-   return (timeframe_16);
-}
+   int tf=0;
+         if (tfs=="M1" || tfs=="1")     tf=PERIOD_M1;
+         if (tfs=="M5" || tfs=="5")     tf=PERIOD_M5;
+         if (tfs=="M15"|| tfs=="15")    tf=PERIOD_M15;
+         if (tfs=="M30"|| tfs=="30")    tf=PERIOD_M30;
+         if (tfs=="H1" || tfs=="60")    tf=PERIOD_H1;
+         if (tfs=="H4" || tfs=="240")   tf=PERIOD_H4;
+         if (tfs=="D1" || tfs=="1440")  tf=PERIOD_D1;
+         if (tfs=="W1" || tfs=="10080") tf=PERIOD_W1;
+         if (tfs=="MN" || tfs=="43200") tf=PERIOD_MN1;
+         if (tf==0 || tf<Period())      tf=Period();
+   return(tf);
+} 
