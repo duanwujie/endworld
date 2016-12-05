@@ -1,0 +1,11 @@
+Rules for buy
+Support area formed;
+Candle open above the cloud;
+solar wind joy indicator is blue
+Renko am dot is blue and crossed up. 
+
+Rules for sell
+Resistance area formed;
+Candle open below the could;
+solar wind joy indicator is red
+Renko am dot is red and crossed down.
